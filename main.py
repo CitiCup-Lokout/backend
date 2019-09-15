@@ -15,21 +15,21 @@ import json
 # Zmty!233$
 
 def parse_datetime_in_filename(row, column):
-    row[column] = time.mktime(time.strptime('2019-'+row[column].strip(), '%Y-%m-%d %H.csv'))
-    return row
+    dt = time.mktime(time.strptime('2019-'+row[column].strip(), '%Y-%m-%d %H.csv'))
+    return dt
+
 
 def parse_datetime(row, column, fmt='%Y-%m-%d %H:%M:%S'):
+    dt = row[column]
     if isinstance(row[column], str):
-        row[column] = time.mktime(time.strptime(row[column].strip(), fmt))
-    return row
+        dt = time.mktime(time.strptime(row[column].strip(), fmt))
+    return dt
 
 def parse_int(row, column):
-    row[column] = int(row[column])
-    return row
+    return int(row[column])
 
 def parse_float(row, column):
-    row[column] = float(row[column])
-    return row
+    return float(row[column])
 
 def fixMergedVideoData(json_buf):
     replacements = (
@@ -61,7 +61,7 @@ def read_historical_json(path):
             , ('Like', parse_float)
         )
         for col, parser in casts:
-            df = df.apply(parser, axis=1, args=(col,))
+            df[col] = df.apply(parser, axis=1, args=(col,))
         df.drop_duplicates(subset='AVNum', inplace=True)
         return df
 
@@ -81,7 +81,7 @@ def read_tracked_video_json(path):
             , ('UploadTime', parse_datetime)
         )
         for col, parser in casts:
-            df = df.apply(parser, axis=1, args=(col,))
+            df[col] = df.apply(parser, axis=1, args=(col,))
         return df
 
 class UpProfile(Resource):
@@ -272,7 +272,7 @@ class Chart(Resource):
 
         df = pd.read_csv(os.path.join('../A', str(uid)+'.csv'))
         df = df.loc[:, ['uid', 'Time', field]]
-        df = df.apply(parse_datetime, axis=1, args=('Time',))
+        df['Time'] = df.apply(parse_datetime, axis=1, args=('Time',))
         df.sort_values('Time', axis=0, inplace=True, ascending=True)
 
         if dataType == 'raw' or dataType == 'sum':
@@ -297,10 +297,12 @@ class Chart(Resource):
                 abort(404, message="Up %d prediction data doesn't exist".format(uid))
             pre_df = pd.read_json(os.path.join('../P', str(uid)+'.json'))
             pre_df['uid'] = uid
-            pre_df['ChargeNum'] = float('Nan')
             pre_df = pre_df.loc[:, ['uid', 'Time', field]]
-            df = pd.concat((df, pre_df), axis=0, sort=False)
-            df.sort_values('Time', axis=0, inplace=True, ascending=True)
+            if field.lower() != 'channelvalue':
+                df = pd.concat((df, pre_df), axis=0, sort=False)
+                # df.sort_values('Time', axis=0, inplace=True, ascending=True)
+            else:
+                df = pre_df
 
         df.fillna('NaN', inplace=True)
         data_points = df.to_dict('records')
@@ -380,17 +382,15 @@ class Search(Resource):
             keyword = keyword.lower()
             name = row['Name'].lower()
             score = name.count(keyword) * len(keyword) / len(name)
-            return pd.Series([score], index=['query_score'])
+            return score
 
-        score = df.apply(query_score, axis=1, args=(args['query'],))
+        df['query_score'] = df.apply(query_score, axis=1, args=(args['query'],))
+        df = df.loc[df['query_score'] > 1e-8]
+        df.sort_values(by=['query_score', 'FanNum', 'Name', 'uid'], axis=0, inplace=True, ascending=False)
+        df.drop_duplicates(subset='uid', inplace=True)
+        df.fillna('NaN', inplace=True)
 
-        search_df = pd.concat((df, score), axis=1)
-        search_df = search_df.loc[search_df['query_score'] > 1e-8]
-        search_df.sort_values(by=['query_score', 'FanNum', 'Name', 'uid'], axis=0, inplace=True, ascending=False)
-        search_df.drop_duplicates(subset='uid', inplace=True)
-        search_df.fillna('NaN', inplace=True)
-
-        return search_df.to_dict('records')
+        return df.to_dict('records')
 
 class Rank(Resource):
     def __init__(self):

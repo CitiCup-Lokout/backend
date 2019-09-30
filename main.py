@@ -10,9 +10,6 @@ import pandas as pd
 import requests
 import json
 
-# Host SSH
-# root@49.232.24.23
-# Zmty!233$
 
 def parse_datetime_in_filename(row, column):
     dt = time.mktime(time.strptime('2019-'+row[column].strip(), '%Y-%m-%d %H.csv'))

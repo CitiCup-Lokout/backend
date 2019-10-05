@@ -84,16 +84,32 @@ def read_tracked_video_json(path):
             df[col] = df.apply(parser, axis=1, args=(col,))
         return df
 
+def read_user_profile():
+    df = pd.read_json('../highlevel/a.json', orient='records', encoding='utf-8')
+    faces = pd.read_json('../highlevel/face.json', orient='records', encoding='utf-8')
+    return pd.merge(df, faces, left_on='uid', right_on='uid', how='left')
+
 class UpProfile(Resource):
     def get(self, uid):
-        df = pd.read_json('../highlevel/a.json', orient='records', encoding='utf-8')
+        df = read_user_profile()
+        # df = pd.read_json('../highlevel/a.json', orient='records', encoding='utf-8')
         df = df.loc[df['uid'] == uid]
         if df.shape[0] == 0:
             abort(404, message="Up %d doesn't exist".format(uid))
         elif df.shape[0] >= 2:
             abort(400, message="Uid %d is not unique.".format(uid))
         df.fillna('NaN', inplace=True)
-        return df.to_dict('records')[0]
+        info = df.to_dict('records')[0]
+
+        # df = pd.read_json('../highlevel/face.json', orient='records', encoding='utf-8')
+        # df = df.loc[df['uid'] == uid]
+        # if df.shape[0] != 0:
+        #     face_info = df.to_dict('records')[0]
+        #     info['Face'] = face_info['Face']
+        # else:
+        #     info['Face'] = 'Not Found'
+
+        return info;
 
         '''
         #######################################################################
@@ -283,7 +299,10 @@ class Chart(Resource):
             #     diff = df[field].diff()
             #     df.loc[diff < 0.0, field] = float('Nan')
         elif dataType == 'inc':
+            delta_time = df['Time'].diff()
             df[field] = df[field].diff()
+            df[field] *= 3 * 60 * 60
+            df[field] //= delta_time
             if field.lower() == 'playnum':
                 df = df.loc[df[field].abs() > 1e-8]
             elif field.lower() == 'chargenum':
@@ -374,7 +393,8 @@ class Search(Resource):
         super(Search, self).__init__()
 
     def get(self):
-        df = pd.read_json('../highlevel/a.json', orient='records', encoding='utf-8')
+        df = read_user_profile()
+        # df = pd.read_json('../highlevel/a.json', orient='records', encoding='utf-8')
 
         args = self.parser.parse_args()
 
@@ -411,7 +431,8 @@ class Rank(Resource):
 
         asc = True if order == 'asc' else False
 
-        info_df = pd.read_json('../highlevel/a.json', orient='records', encoding='utf-8')
+        info_df = read_user_profile()
+        # pd.read_json('../highlevel/a.json', orient='records', encoding='utf-8')
         if category.lower() != 'global':
             category_path = os.path.join('../UpinfoClassify/Videotypeclassify', category+'.csv')
             cate_df = pd.read_csv(category_path, names=['uid', '__Name']).loc[:, 'uid']
